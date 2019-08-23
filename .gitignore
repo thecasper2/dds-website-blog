@@ -19,6 +19,7 @@
 
 # RStudio files
 .Rproj.user/
+.Rprofile
 
 # produced vignettes
 vignettes/*.html
@@ -34,3 +35,6 @@ vignettes/*.pdf
 # Temporary files created by R markdown
 *.utf8.md
 *.knit.md
+.Rproj.user
+packrat/lib*/
+generic/templates/Rmd/*.html

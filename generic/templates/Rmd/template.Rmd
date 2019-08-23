@@ -1,0 +1,43 @@
+---
+title: "BLOG TITLE HERE"
+author: "Alex Dolphin"
+date: "DD/MM/YYYY"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      toc_collapsed: true
+    toc_depth: 3
+    theme: cerulean
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r logo, echo=FALSE}
+# This section includes the logo in the top right of the page
+htmltools::img(
+  src = knitr::image_uri("generic/images/logo-blue.png"), 
+  alt = "logo", 
+  style = "position:absolute; top:0; right:0; padding:5px;"
+)
+```
+
+```{r libraries, echo=FALSE}
+# Here we import all the libraries required for the markdown
+```
+
+```{r variables, echo=FALSE}
+# Here we store any variables used in the markdown
+# This allows us to recreate the output with new variables quickly
+```
+
+# Introduction
+
+# Data Collection
+
+```{r get_data}
+```
+
