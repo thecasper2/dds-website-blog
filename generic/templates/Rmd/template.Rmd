@@ -8,7 +8,7 @@ output:
     toc_float:
       toc_collapsed: true
     toc_depth: 3
-    theme: cerulean
+    theme: paper
 ---
 
 ```{r setup, echo=FALSE}
