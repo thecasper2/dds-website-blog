@@ -1,6 +1,6 @@
 # Dolphin Data Solutions website blog
 
-This repository will contain the files necessary to create the entries for the [Dolphin Data Solutions website](www.dolphindata.co.uk)
+This repository will contain the files necessary to create the entries for the [Dolphin Data Solutions website](https://www.dolphindata.co.uk)
 
 ## Structure
 
