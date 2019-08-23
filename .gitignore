@@ -37,4 +37,5 @@ vignettes/*.pdf
 *.knit.md
 .Rproj.user
 packrat/lib*/
+packrat/src/
 generic/templates/Rmd/*.html
