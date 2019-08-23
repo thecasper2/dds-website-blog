@@ -1,0 +1,236 @@
+---
+title: "Sankey plots"
+author: "Alex Dolphin"
+date: "23/08/2019"
+output: 
+  html_document:
+    self_contained: no
+    toc: true
+    toc_float:
+      toc_collapsed: true
+    toc_depth: 3
+    theme: paper
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r logo, echo=FALSE}
+# This section includes the logo in the top right of the page
+htmltools::img(
+  src = knitr::image_uri("generic/images/logo-blue.png"), 
+  alt = "logo", 
+  style = "position:absolute; top:0; right:0; padding:5px;"
+)
+```
+
+```{r libraries, echo=FALSE, include=FALSE}
+# Here we import all the libraries required for the markdown
+library(data.table)
+library(googleVis)
+library(httr)
+library(magrittr)
+library(reshape2)
+library(rjson)
+```
+
+```{r variables, echo=FALSE}
+# Here we store any variables used in the markdown
+# This allows us to recreate the output with new variables quickly
+```
+
+# Introduction
+
+Sankey plots help visualise the flow of information, especially in complex systems. In this post I will show an example of how to create an engaging sankey plot in R.
+
+# What is it?
+
+A sankey plot can take many forms, some examples include:
+
+- User journeys through a website, starting from the home page and clicking through other pages on the site
+- Passenger trips starting from a certain airport and transiting through other airports
+- Household incomes by year; how many poorer families make it to the higher-income range?
+
+Furthermore sankey plots are very aesthetically engaging, as long as they are not cluttered. [This BBC article](http://www.bbc.co.uk/news/uk-politics-40630242) shows a very interesting sankey plot titled "Where the Leave vote went". It shows how those in the UK, that voted to leave the EU, changed their general election vote between 2015 and 2017.
+
+# Our example
+
+I will create an example of a sankey plot using data that I thoroughly enjoy working with, that is Premier League Fantasy Football data. 
+
+For those of you unaware, fantasy football allows people at home to create their own football team based upon football players in real life. The players in their team get points when the players in real life perform well.
+
+In our example we will try to answer the following question: Do players who play well in one game week tend to play well in all game weeks?
+
+To create the plot we will be using an R library called `googleVis`.
+
+# Data Collection
+
+Premier league fantasy football uses an API, that is you can make requests to the API to retrieve your required data.
+
+We are going to use the `httr` package to make API requests, and get historical data on each of the players in the Premier League.
+That is, we want a table that tells us, for each player, how many points they scored on each round. Below is the code that gets this data for us.
+
+```{r get_data}
+# We make a HTTP GET request to the fantasy premier league API
+d <- httr::GET("https://fantasy.premierleague.com/api/bootstrap-static/", user_agent("httr"))
+# From the response, we write the content to a variable
+d_summary <- content(d)
+# From this content we can construct a list of player IDs.
+# We have to loop over the list elements (these are players)
+# and take the "id"" value of each player int he list
+player_ids <- c()
+for(player in d_summary$elements){
+  player_ids <- c(player_ids, player$id)
+}
+# Now we have a vector of player ID values, we can make a request to the API for each player.
+# We want to get the points history for each player. We can make a template data frame for that.
+player_history <- data.frame(
+  player_id = numeric(), # We want to identify a unique player
+  round = numeric(), # We want to know which round the score is for
+  score = numeric() # We want to know the score for that player for that round
+)
+
+
+for(player_id in player_ids){
+  # We get the data for a player, which includes the history of that player
+  url <- paste0("https://fantasy.premierleague.com/api/element-summary/",player_id,"/")
+  player_data <- httr::GET(url, user_agent("httr")) %>% content()
+  # Now we have the history for a player, we want to make each round a row in our data frame
+  for(round in player_data$history){
+    new_row <- c(
+      player_id, # We include the player ID we are looking up
+      round$round, # We find the round number
+      round$total_points # We record the score for that player on the round
+    )
+    # Then we attach this row to our data frame
+    player_history <- rbind(player_history, new_row)
+  }
+}
+
+# Because the loop above destroys our column names, we add them back
+colnames(player_history) <- c("player_id", "round", "score")
+
+# And because it's easier to work with, we turn our data frame into a data.table
+player_history <- data.table::as.data.table(player_history)
+head(player_history)
+```
+
+So as we can see, we now have a helpful table for creating our sankey plot. Unfortunately it's not in exactly the right shape that we need to create the plot, so we will have to do some work to get it into the right shape.
+
+# Reshaping the data
+
+In the previous section we created our data table. However when we read the documentation for the plotting function `googleVis::gvisSankey` we see that we need a table with the following three columns:
+
+- `from`: the start of a node, e.g. `a`
+- `to`: the end of a node, e.g. `b`
+- `weight`: the amount that goes from `a` to `b`
+
+But what does this mean in our context? As we said above we want to see the flow, from week-to-week, of the points of all players.
+More concretely that means our table would look like:
+
+- `from`: the number of points on a given week (e.g. week 1, 5 points)
+- `to`: the number of points on the next week (e.g. week 2, 3 points)
+- `weight`: the number of players that had those points in week one and week two
+
+So now we need to reshape our data to fit that format. Below is the code that does this reshaping.
+
+```{r reshape}
+# Let's first create a new data table to work with
+player_history_reshape <- player_history
+
+# Now we have a round in each row, we can get the score from the next round by "leading" the value
+player_history_reshape[, 
+  c("round", "score", "next_round", "next_score") :=
+  .(round, score, shift(round, type="lead"), shift(score, type="lead")),
+  by=player_id]
+
+# Obviously the latest round won't have a next round, so we can get rid of rows where this happens
+player_history_reshape <- player_history_reshape[!is.na(next_score)]
+head(player_history_reshape, 2)
+
+# One problem we have is that we need to know the round and the score, so we can do something like:
+# Round 1: 5 -> Round 2: 2 -> Round 3: 1
+# So we have to prepend the score with some kind of text as follows
+
+player_history_reshape[, FROM := paste0("Round ", round,": ", score)]
+player_history_reshape[, TO := paste0("Round ", next_round,": ", next_score)]
+
+# Now we have our "from" column (the round score), our "to" column (the next round score),
+# so all we need to do is count how many players make the same transitions.
+player_rounds <- player_history_reshape[,
+  .(Players = length(player_id)),         # We count the number of players...
+  by=list(score, next_score, FROM, TO)    # ...grouped by the transitions....
+][order(score, next_score)                # ...ordered by the numerical round numbers...
+][, c("FROM", "TO", "Players")]           # ...and select the columns of interest
+
+head(player_rounds, 2)
+```
+
+Now the data is in the shape expected for `googleVis::gvisSankey`, all that is left is to plot.
+
+# Plotting the data
+
+Previously we reshaped the data to match the expected input into `googleVis::gvisSankey`. Now that we have done so,
+we are able to plot the data very simply. Below is the code required to create the plot.
+
+```{r plot, results="asis"}
+# We set this option here so that the plot renders in this document, not on an external server
+options(gvis.plot.tag="chart")
+
+# And here we define the plot
+sankey_plot <- googleVis::gvisSankey(
+  player_rounds,             # As promised, our input table
+  from="FROM",                        # Our from column
+  to="TO",                            # Our to column
+  weight="Players",                   # Our weight column
+  options=list(                       # And some colour options to make it look nice
+    sankey="{
+      link:  { color: { fill: '#d799ae' } },
+      node:  { color: { fill: '#a61d4c' },
+      label: { color: '#871b47' } },
+      iterations: 0
+    }"                                # Iterations ensures it doesn't reorder our nodes
+  )
+)
+
+# And finally we render the plot
+plot(sankey_plot)
+```
+
+Finally we have our sankey plot. 
+
+Sadly there are some artifacts of `gvisSankey` which make the plot a little uglier:
+
+- Thin bars near the top cut off the text
+- Because round 1: -2 only goes to 2, round 2: 2 is the first node on in round 2
+  - This means that only the left hand side is ordered by points
+
+# Answering the question
+
+To reiterate the question we wanted to answer:
+
+Do players who play well in one game week tend to play well in all game weeks?
+
+To answer this I will pick out some key transitions:
+
+- Most transitions go from 0 points to 0 points
+  - This is because there are many players who rarely play
+- Those that scored highly (6 points) in round 1, often scored much lower in round 2
+  - Score 6 to score 1 or score are both quite large
+  - This suggests that scoring high in the first round doesn't generally lead to scoring highly again
+  
+So to loosely answer the question, it doesn't seem as if scoring highly in one round leads to scoring highly in another round.
+It is important to note that this isn't statistically robust, we are only looking at lines on a plot. But it does give us
+a nice indication to our answer, for which we can go away and conduct further research.
+
+# Final words
+
+The whole `googleVis` library is not my favourite, many of the plots are quite ugly and it isn't particularly well maintained.
+I would like to extend this to use the `plotly` sankey plot, as `plotly` is a lot more expressive, and very well maintained.
+This post is mostly just to get you excited about using sankey plots.
+
+The sankey plot is a very nice plot, and I have seen some really useful deployments of it in industry. I have also seen some awful
+implementations where there are countless nodes and all the useful information is lost. So please remember what question you are
+trying to answer when building plots, and ask yourself if a casual observer would understand what is going on.
