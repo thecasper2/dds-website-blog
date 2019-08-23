@@ -38,4 +38,4 @@ vignettes/*.pdf
 .Rproj.user
 packrat/lib*/
 packrat/src/
-generic/templates/Rmd/*.html
+*.html
