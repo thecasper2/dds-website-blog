@@ -39,3 +39,9 @@ vignettes/*.pdf
 packrat/lib*/
 packrat/src/
 *.html
+
+# Mac files
+# General
+.DS_Store
+.AppleDouble
+.LSOverride
